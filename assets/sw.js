@@ -2,8 +2,8 @@ var cacheName = 'egui-task5-pwa';
 var filesToCache = [
   './',
   './index.html',
-  './eframe_template.js',
-  './task5.wasm',
+  './task5.js',
+  './task5_bg.wasm',
 ];
 
 /* Start the service worker and cache all of the app's content */
