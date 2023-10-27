@@ -31,8 +31,10 @@ impl DirectReasoning {
             unused_rules: rules.rules.iter().cloned().collect(),
         }
     }
-    pub fn update_hashmap(&self, color: &RwLock<HashMap<Fact, FactState>>){
-        let mut c = color.write().unwrap();
+    pub fn update_hashmap(&self, color: &NodeColoring){
+        let mut c = color.facts.write().unwrap();
+        let mut r = color.rules.write().unwrap();
+
         for i in &self.rules.all_possible_facts {
             c.insert(i.clone(), FactState::None);
         }
@@ -49,6 +51,13 @@ impl DirectReasoning {
             c.insert(self.target_fact.clone(), FactState::Target);
 
         }
+        for i in &self.unused_rules {
+            r.insert(i.clone(), RuleState::None);
+        }
+        for i in &self.used_rules {
+            r.insert(i.clone(), RuleState::Visited);
+        }
+        
         
     }
     pub fn step(&mut self) -> StepResult {
@@ -76,11 +85,20 @@ pub struct StatedFact {
     pub state: Arc<RwLock<HashMap<Fact, FactState>>>
 }
 #[derive(Debug, Clone)]
+pub struct StatedRule {
+    pub rule: Rule,
+    pub state: Arc<RwLock<HashMap<Rule, RuleState>>>
+}
+#[derive(Debug, Clone)]
 pub enum GraphNode {
-    Rule(Rule),
+    Rule(StatedRule),
     Fact(StatedFact)    
 }
-
+#[derive(Debug, Clone, Default)]
+pub struct NodeColoring {
+    pub facts: Arc<RwLock<HashMap<Fact, FactState>>>,
+    pub rules: Arc<RwLock<HashMap<Rule, RuleState>>>
+}
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum FactState {
     None,
@@ -88,5 +106,9 @@ pub enum FactState {
     Target,
     TargetVisited,
     Visited,
-
+}
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum RuleState {
+    None,
+    Visited,
 }

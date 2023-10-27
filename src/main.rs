@@ -1,6 +1,6 @@
 use std::{default, sync::{Arc, RwLock}, collections::HashMap};
 
-use direct_reasoning::{DirectReasoning, GraphNode, FactState};
+use direct_reasoning::{DirectReasoning, GraphNode, FactState, NodeColoring};
 use egui::{Shape, Rect, Vec2, Rounding, Stroke, FontId, FontFamily, epaint::TextShape, Color32, ComboBox};
 use egui_extras::{TableBuilder, Column};
 use egui_graphs::{Graph, GraphView, SettingsStyle, SettingsInteraction};
@@ -47,7 +47,7 @@ struct MyEguiApp {
     engine: Option<Arc<Engine>>,
     state: AppState,
     g:Graph<GraphNode, (), Directed>,
-    coloring: Arc<RwLock<HashMap<Fact, FactState>>>,
+    coloring: NodeColoring,
     dir: Option<DirectReasoning>,
     rev: Option<ReverseReasoning>,
     target_fact: Option<Fact>,
@@ -164,16 +164,18 @@ impl eframe::App for MyEguiApp {
                     let size = Vec2::new(rad * 1.5, rad * 1.5);
                     
                         let rect = Rect::from_center_size(node_center_loc, size);
-                        let shape_rect = Shape::rect_stroke(
-                            rect,
-                            Rounding::default(),
-                            Stroke::new(1., n.color(ctx)),
-                        );
+                        
+                        
                         
                         //let node_color =  if self.engine.unwrap().starting_facts.connect(n.data().unwrap()) {Color32::GREEN} else {Color32::GRAY};
                         //let node_color = Color32::GRAY;
-                        let node_color = match n.data().unwrap() {
-                            GraphNode::Rule(r) => Color32::BLUE,
+                        let shape_color = match n.data().unwrap() {
+                            GraphNode::Rule(r) => {
+                                r.state.read().unwrap().get(&r.rule).map(|qt| match qt {
+                                    direct_reasoning::RuleState::None => Color32::GRAY,
+                                    direct_reasoning::RuleState::Visited => Color32::YELLOW,
+                                }).unwrap_or(Color32::GRAY)
+                            }
                             GraphNode::Fact(f) => {
                                 f.state.read().unwrap().get(&f.fact).map(|qt|match qt {
                                        FactState::None => Color32::GRAY,
@@ -184,8 +186,11 @@ impl eframe::App for MyEguiApp {
                                    }).unwrap_or(Color32::GRAY)
                                 }
                             };
-                        
-                        let shape_circle = Shape::circle_filled(node_center_loc, rad, node_color);
+                        let shape_rect = Shape::rect_filled(
+                                rect,
+                                Rounding::default(),
+                                shape_color);
+                        let shape_circle = Shape::circle_filled(node_center_loc, rad, shape_color);
                         match n.data().unwrap() {
                             GraphNode::Rule(_) => l.add(shape_rect),
                             GraphNode::Fact(_) => l.add(shape_circle),
@@ -195,7 +200,7 @@ impl eframe::App for MyEguiApp {
                         let galley = match n.data().unwrap() {
                             GraphNode::Rule(r) => ctx.fonts(|f| {
                                 f.layout_no_wrap(
-                                    format!("{:}", r),
+                                    format!("{:}", r.rule),
                                     FontId::new(rad, FontFamily::Monospace),
                                     color,
                                 )
