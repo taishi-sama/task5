@@ -1,17 +1,19 @@
 use std::{default, sync::{Arc, RwLock}, collections::HashMap};
 
-use direct_reasoning::DirectReasoning;
+use direct_reasoning::{DirectReasoning, GraphNode, FactState};
 use egui::{Shape, Rect, Vec2, Rounding, Stroke, FontId, FontFamily, epaint::TextShape, Color32, ComboBox};
 use egui_extras::{TableBuilder, Column};
 use egui_graphs::{Graph, GraphView, SettingsStyle, SettingsInteraction};
 use engine::Engine;
-use fact::{Fact, Rule, StatedFact, GraphNode, FactState};
+use fact::{Fact, Rule};
 use petgraph::{Directed, stable_graph::StableGraph, visit::EdgeRef};
+use reverse_reasoning::ReverseReasoning;
 
 pub mod direct_reasoning;
 pub mod engine;
 pub mod fact;
 pub mod ruletree;
+pub mod reverse_reasoning;
 
 #[cfg(not(target_arch = "wasm32"))]
 fn main() {
@@ -47,6 +49,7 @@ struct MyEguiApp {
     g:Graph<GraphNode, (), Directed>,
     coloring: Arc<RwLock<HashMap<Fact, FactState>>>,
     dir: Option<DirectReasoning>,
+    rev: Option<ReverseReasoning>,
     target_fact: Option<Fact>,
 }
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
@@ -58,7 +61,7 @@ enum AppState {
 }
 impl Default for MyEguiApp {
     fn default() -> Self {
-        Self { engine: Default::default(), state: Default::default(), coloring: Default::default(), g: (&StableGraph::new()).into(), dir: None, target_fact: None }
+        Self { engine: Default::default(), state: Default::default(), coloring: Default::default(), g: (&StableGraph::new()).into(), dir: None, target_fact: None, rev:None }
     }
 }
 impl MyEguiApp {
@@ -75,6 +78,7 @@ impl MyEguiApp {
             coloring: c,
             state: AppState::None,
             dir: None,
+            rev: None,
             target_fact: None
         }
     }
@@ -82,7 +86,7 @@ impl MyEguiApp {
         match self.state {
             AppState::None => (),
             AppState::DirectReasoning => self.dir = Some(DirectReasoning::new(self.engine.as_ref().unwrap().clone(), self.target_fact.as_ref().unwrap().clone())),
-            AppState::ReverseReasoning => todo!(),
+            AppState::ReverseReasoning => self.rev = Some(ReverseReasoning::new(self.engine.as_ref().unwrap().clone(), self.target_fact.as_ref().unwrap().clone())),
         }
         match self.state {
             AppState::None => (),
@@ -90,7 +94,10 @@ impl MyEguiApp {
                 Some(x) => x.update_hashmap( &self.coloring),
                 None => (),
             },
-            AppState::ReverseReasoning => todo!(),
+            AppState::ReverseReasoning => match self.dir.as_ref() {
+                Some(x) => (), //TODO
+                None => (),
+            }
         }
     }
 }
@@ -102,9 +109,9 @@ impl eframe::App for MyEguiApp {
             
             let prev = self.target_fact.clone();
             ComboBox::from_label("").
-                selected_text(format!("{:?}", self.target_fact)).show_ui(ui, |ui|{
+                selected_text(format!("{}", self.target_fact.as_ref().map(|x|format!("{}",x)).unwrap_or_else(||"None".to_string()))).show_ui(ui, |ui|{
                     for i in &self.engine.clone().unwrap().all_possible_facts {
-                        ui.selectable_value(&mut self.target_fact, Some(i.clone()), format!("{:?}", i));
+                        ui.selectable_value(&mut self.target_fact, Some(i.clone()), format!("{:}", i));
                     }
                 });
             if prev != self.target_fact {self.update_state()};
@@ -120,7 +127,7 @@ impl eframe::App for MyEguiApp {
                 match self.state {
                     AppState::None => (),
                     AppState::DirectReasoning => {self.dir.as_mut().unwrap().step(); self.dir.as_ref().unwrap().update_hashmap(&self.coloring)},
-                    AppState::ReverseReasoning => todo!(),
+                    AppState::ReverseReasoning => {self.rev.as_mut().unwrap().step(); println!("{:?}", self.rev.as_ref().unwrap().root);},
                 }
             }
         })});
@@ -135,8 +142,10 @@ impl eframe::App for MyEguiApp {
                 }).body(|mut body| {
                     if let Some(e) = &self.engine {
                         body.rows(18.0, e.rules.len(), |row_index, mut row| {
-                            row.col(|ui|{ ui.label(format!("{:?}", e.rules[row_index].reqs)); });
-                            row.col(|ui|{ ui.label(format!("{:?}", e.rules[row_index].out)); });
+                            row.col(|ui|{ ui.label(
+                                e.rules[row_index].reqs.iter().map(|x|format!("{}", x)).reduce(|x, y|x + ", " + &y).unwrap_or_default()
+                            ); });
+                            row.col(|ui|{ ui.label(format!("{}", e.rules[row_index].out)); });
 
                         })
                     }
@@ -167,11 +176,11 @@ impl eframe::App for MyEguiApp {
                             GraphNode::Rule(r) => Color32::BLUE,
                             GraphNode::Fact(f) => {
                                 f.state.read().unwrap().get(&f.fact).map(|qt|match qt {
-                                       fact::FactState::None => Color32::GRAY,
-                                       fact::FactState::Starting => Color32::DARK_GREEN,
-                                       fact::FactState::Target => Color32::GREEN,
-                                       fact::FactState::Visited => Color32::YELLOW,
-                                       fact::FactState::TargetVisited => Color32::LIGHT_GREEN
+                                       FactState::None => Color32::GRAY,
+                                       FactState::Starting => Color32::DARK_GREEN,
+                                       FactState::Target => Color32::GREEN,
+                                       FactState::Visited => Color32::YELLOW,
+                                       FactState::TargetVisited => Color32::LIGHT_GREEN
                                    }).unwrap_or(Color32::GRAY)
                                 }
                             };
@@ -186,14 +195,14 @@ impl eframe::App for MyEguiApp {
                         let galley = match n.data().unwrap() {
                             GraphNode::Rule(r) => ctx.fonts(|f| {
                                 f.layout_no_wrap(
-                                    format!("{:?}", r),
+                                    format!("{:}", r),
                                     FontId::new(rad, FontFamily::Monospace),
                                     color,
                                 )
                             }),
                             GraphNode::Fact(fact) => ctx.fonts(|f| {
                                 f.layout_no_wrap(
-                                    format!("{:?}", fact.fact),
+                                    format!("{:}", fact.fact),
                                     FontId::new(rad, FontFamily::Monospace),
                                     color,
                                 )

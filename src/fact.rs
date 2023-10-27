@@ -1,3 +1,4 @@
+use core::fmt;
 use std::{collections::{HashSet, HashMap}, sync::{Arc, RwLock}};
 
 // #[derive(Debug, Clone)]
@@ -30,23 +31,27 @@ impl CoreFact {
         Arc::new(CoreFact::Symbol(symbol.into()))
     }    
 }
-#[derive(Debug, Clone)]
-pub struct StatedFact {
-    pub fact: Fact,
-    pub state: Arc<RwLock<HashMap<Fact, FactState>>>
-}
-#[derive(Debug, Clone)]
-pub enum GraphNode {
-    Rule(Rule),
-    Fact(StatedFact)    
-}
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum FactState {
-    None,
-    Starting,
-    Target,
-    TargetVisited,
-    Visited,
-
+impl fmt::Display for CoreFact {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CoreFact::Symbol(s) => write!(f, "{}", s),
+            CoreFact::Symbols(v) => {
+                write!(f, "(")?;
+                for i in v {
+                    write!(f, "{}, ", i)?
+                };
+                write!(f, ")")
+            },
+        }
+    }
+}
+impl fmt::Display for CoreRule {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{{")?;
+        for i in &self.reqs {
+            write!(f, "{}, ", i)?;
+        }
+        write!(f, "}} -> {}", self.out)
+    }
 }

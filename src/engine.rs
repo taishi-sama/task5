@@ -4,8 +4,8 @@ use egui_graphs::Graph;
 use petgraph::{Directed, stable_graph::StableGraph};
 
 use crate::{
-    fact::{Fact, Rule, CoreFact, CoreRule, StatedFact, GraphNode, FactState},
-    ruletree::RuleTree,
+    fact::{Fact, Rule, CoreFact, CoreRule},
+    ruletree::RuleTree, direct_reasoning::{GraphNode, FactState, StatedFact},
 };
 #[derive(Debug, Clone)]
 pub struct Engine {
@@ -20,7 +20,7 @@ impl Engine {
         let wood = CoreFact::new("oak_wood");
         let stick = CoreFact::new("stick");
         let pickaxe = CoreFact::new("wooden_pickaxe");
-        let starting = vec![planks.clone(), wood.clone()];
+        let starting = vec![wood.clone()];
         let mut possible = vec![planks.clone(), wood.clone(), stick.clone(), pickaxe.clone() ];
         //possible.extend(starting.iter().cloned());
         let rules = vec![

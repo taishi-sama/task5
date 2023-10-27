@@ -5,9 +5,9 @@ use petgraph::{Directed, stable_graph::StableGraph};
 
 use crate::{
     engine::Engine,
-    fact::{Fact, Rule, StatedFact, GraphNode, FactState},
+    fact::{Fact, Rule},
 };
-
+#[derive(Debug, Clone)]
 pub struct DirectReasoning {
     rules: Arc<Engine>,
     current_facts: HashSet<Fact>,
@@ -15,6 +15,7 @@ pub struct DirectReasoning {
     used_rules: Vec<Rule>,
     unused_rules: HashSet<Rule>,
 }
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StepResult {
     FoundAfter(Rule, Fact),
     Applied(Rule),
@@ -68,4 +69,24 @@ impl DirectReasoning {
         }
         StepResult::NotProved
     }
+}
+#[derive(Debug, Clone)]
+pub struct StatedFact {
+    pub fact: Fact,
+    pub state: Arc<RwLock<HashMap<Fact, FactState>>>
+}
+#[derive(Debug, Clone)]
+pub enum GraphNode {
+    Rule(Rule),
+    Fact(StatedFact)    
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum FactState {
+    None,
+    Starting,
+    Target,
+    TargetVisited,
+    Visited,
+
 }
