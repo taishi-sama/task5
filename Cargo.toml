@@ -10,10 +10,12 @@ eframe = "0.23.0"
 egui = "0.23.0"
 egui_extras = "0.23.0"
 egui_graphs = "0.15.0"
+futures = "0.3.29"
 getrandom = { version = "0.2.10", features = ["js"] }
 log = "0.4.20"
 petgraph = "0.6.4"
 regex = "1.10.2"
+rfd = "0.12.1"
 # native:
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 env_logger = "0.10"

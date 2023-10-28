@@ -1,4 +1,4 @@
-use std::{default, sync::{Arc, RwLock}, collections::HashMap, fmt::format};
+use std::{default, sync::{Arc, RwLock, Mutex, mpsc::{channel, Sender, Receiver}}, collections::HashMap, fmt::format, path::PathBuf, thread::sleep, time::Duration};
 
 use direct_reasoning::{DirectReasoning, GraphNode, FactState, NodeColoring, RuleState};
 use egui::{Shape, Rect, Vec2, Rounding, Stroke, FontId, FontFamily, epaint::TextShape, Color32, ComboBox, ScrollArea, RichText, Layout};
@@ -52,6 +52,8 @@ struct MyEguiApp {
     rev: Option<ReverseReasoning>,
     target_fact: Option<Fact>,
     all_rules: bool,
+    file_update: bool,
+    file: Arc<Mutex<Option<Vec<u8>>>>
 }
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
 enum AppState {
@@ -62,7 +64,7 @@ enum AppState {
 }
 impl Default for MyEguiApp {
     fn default() -> Self {
-        Self { engine: Default::default(), state: Default::default(), coloring: Default::default(), g: (&StableGraph::new()).into(), dir: None, target_fact: None, rev:None, all_rules: false }
+        Self { engine: Default::default(), state: Default::default(), coloring: Default::default(), g: (&StableGraph::new()).into(), dir: None, target_fact: None, rev:None, all_rules: false, file_update: false, file: Arc::new(Mutex::new(None)) }
     }
 }
 impl MyEguiApp {
@@ -82,7 +84,9 @@ impl MyEguiApp {
             dir: None,
             rev: None,
             target_fact: None,
-            all_rules: false
+            all_rules: false,
+            file_update: false, 
+            file: Arc::new(Mutex::new(None))
         }
     }
     fn update_state(&mut self) {
@@ -110,9 +114,59 @@ impl MyEguiApp {
 
 impl eframe::App for MyEguiApp {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        if self.file.clone().lock().unwrap().is_some(){
+            let m = self.file.clone();
+            let mut l = m.lock().unwrap();
+            if let Some(t) = l.as_ref() {
+                    
+                self.engine = Some(Engine::from_string(&String::from_utf8_lossy(t)));
+                let (g, c) = self.engine.as_ref().unwrap().to_graph();
+                self.g = g;
+                self.coloring = c;
+                self.update_state();
+                *l = None;
+            }
+        }
         egui::TopBottomPanel::top("Controls").resizable(false).show(ctx, |ui|{
             ui.horizontal(|ui|{
             egui::widgets::global_dark_light_mode_switch(ui);
+            if ui.button("Open File").clicked() {
+                //let mut file : Arc<Mutex<Option<_>>> = Arc::new(Mutex::new(None));
+                let mut v : Arc<Mutex<Option<Vec<u8>>>> = self.file.clone();
+                //let (r, w) = channel::<Vec<u8>>();
+                //rfd::FileDialog::new().pick_file();
+                //r.send(t);
+                #[cfg(target_arch = "wasm32")]
+                {
+                    let v = v.clone();
+                    wasm_bindgen_futures::spawn_local(async move {
+                        let task = rfd::AsyncFileDialog::new().pick_file();
+
+                        //let f = task.await;
+                        if let Some(t) = task.await {
+                            log::info!("File uploaded!");
+                            let q = t.read().await;
+                            log::info!("File readed!");
+                            *v.lock().unwrap() =Some( q);
+                        }
+                    });
+                }
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    let v = v.clone();
+                    futures::executor::block_on(async move{
+                        let task = rfd::AsyncFileDialog::new().pick_file();
+                        let f = task.await;
+                        if let Some(t) = f {
+                            *v.lock().unwrap() = Some(t.read().await);
+                        }
+                    });
+                }
+                
+            }
+            if ui.button("Load default").clicked() {
+                *self.file.lock().unwrap() = Some(include_bytes!("crafts.txt").to_vec()) 
+            }
             // ComboBox::from_label("").
             //     selected_text(format!("{}", self.target_fact.as_ref().map(|x|format!("{}",x)).unwrap_or_else(||"None".to_string()))).show_ui(ui, |ui|{
             //         for i in &self.engine.clone().unwrap().all_possible_facts {
@@ -144,9 +198,9 @@ impl eframe::App for MyEguiApp {
         })});
         let mut update_state = false;
         egui::SidePanel::right("Facts")
-            .resizable(false)
+            .resizable(true)
             .show(ctx, |ui| {
-                let mut table = TableBuilder::new(ui).resizable(false).column(Column::exact(25.0)).column(Column::auto().at_least(15.0)).column(Column::exact(25.0));
+                let mut table = TableBuilder::new(ui).resizable(false).column(Column::exact(25.0)).column(Column::auto().at_least(50.0)).column(Column::exact(25.0));
                 table.header(20.0, |mut header| {
                     header.col(|ui|{ui.strong("Starting");});
                     header.col(|ui|{ui.strong("Facts");});

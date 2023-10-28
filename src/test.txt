@@ -1,0 +1,3 @@
+copper_ingot
+{copper_ingot} -> copper_wire
+{copper_wire} -> fine_copper_wire
