@@ -2166,6 +2166,7 @@ dependencies = [
  "getrandom",
  "log",
  "petgraph",
+ "regex",
  "wasm-bindgen-futures",
 ]
 

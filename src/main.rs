@@ -1,7 +1,7 @@
-use std::{default, sync::{Arc, RwLock}, collections::HashMap};
+use std::{default, sync::{Arc, RwLock}, collections::HashMap, fmt::format};
 
-use direct_reasoning::{DirectReasoning, GraphNode, FactState, NodeColoring};
-use egui::{Shape, Rect, Vec2, Rounding, Stroke, FontId, FontFamily, epaint::TextShape, Color32, ComboBox};
+use direct_reasoning::{DirectReasoning, GraphNode, FactState, NodeColoring, RuleState};
+use egui::{Shape, Rect, Vec2, Rounding, Stroke, FontId, FontFamily, epaint::TextShape, Color32, ComboBox, ScrollArea, RichText};
 use egui_extras::{TableBuilder, Column};
 use egui_graphs::{Graph, GraphView, SettingsStyle, SettingsInteraction};
 use engine::Engine;
@@ -44,13 +44,14 @@ fn main() {
     });
 }
 struct MyEguiApp {
-    engine: Option<Arc<Engine>>,
+    engine: Option<Engine>,
     state: AppState,
     g:Graph<GraphNode, (), Directed>,
     coloring: NodeColoring,
     dir: Option<DirectReasoning>,
     rev: Option<ReverseReasoning>,
     target_fact: Option<Fact>,
+    all_rules: bool,
 }
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
 enum AppState {
@@ -61,41 +62,46 @@ enum AppState {
 }
 impl Default for MyEguiApp {
     fn default() -> Self {
-        Self { engine: Default::default(), state: Default::default(), coloring: Default::default(), g: (&StableGraph::new()).into(), dir: None, target_fact: None, rev:None }
+        Self { engine: Default::default(), state: Default::default(), coloring: Default::default(), g: (&StableGraph::new()).into(), dir: None, target_fact: None, rev:None, all_rules: false }
     }
 }
 impl MyEguiApp {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        let e = Arc::new(Engine::primitive_engine());
+        let e = Engine::from_string(include_str!("crafts.txt"));
+        //println!("{:?}", e);
         // Customize egui here with cc.egui_ctx.set_fonts and cc.egui_ctx.set_visuals.
         // Restore app state using cc.storage (requires the "persistence" feature).
         // Use the cc.gl (a glow::Context) to create graphics shaders and buffers that you can use
         // for e.g. egui::PaintCallback.
         let (g, c) = e.to_graph();
         Self {
-            engine: Some(e.clone()),
+            engine: Some(e),
             g, //(&StableGraph::new()).into(),
             coloring: c,
             state: AppState::None,
             dir: None,
             rev: None,
-            target_fact: None
+            target_fact: None,
+            all_rules: false
         }
     }
     fn update_state(&mut self) {
         match self.state {
             AppState::None => (),
-            AppState::DirectReasoning => self.dir = Some(DirectReasoning::new(self.engine.as_ref().unwrap().clone(), self.target_fact.as_ref().unwrap().clone())),
-            AppState::ReverseReasoning => self.rev = Some(ReverseReasoning::new(self.engine.as_ref().unwrap().clone(), self.target_fact.as_ref().unwrap().clone())),
+            AppState::DirectReasoning => self.dir = Some(DirectReasoning::new(self.engine.as_ref().unwrap(), self.target_fact.as_ref().unwrap().clone())),
+            AppState::ReverseReasoning => self.rev = Some(ReverseReasoning::new(self.engine.as_ref().unwrap(), self.target_fact.as_ref().unwrap().clone())),
         }
         match self.state {
-            AppState::None => (),
+            AppState::None => match self.engine.as_ref() {
+                Some(x) => x.recolor_node(self.target_fact.clone(), &self.coloring),
+                None => (),
+            },
             AppState::DirectReasoning => match self.dir.as_ref() {
                 Some(x) => x.update_hashmap( &self.coloring),
                 None => (),
             },
-            AppState::ReverseReasoning => match self.dir.as_ref() {
-                Some(x) => (), //TODO
+            AppState::ReverseReasoning => match self.rev.as_mut() {
+                Some(x) => _ = x.recolor(&self.coloring), //TODO
                 None => (),
             }
         }
@@ -107,14 +113,12 @@ impl eframe::App for MyEguiApp {
         egui::TopBottomPanel::top("Controls").resizable(false).show(ctx, |ui|{
             ui.horizontal(|ui|{
             
-            let prev = self.target_fact.clone();
-            ComboBox::from_label("").
-                selected_text(format!("{}", self.target_fact.as_ref().map(|x|format!("{}",x)).unwrap_or_else(||"None".to_string()))).show_ui(ui, |ui|{
-                    for i in &self.engine.clone().unwrap().all_possible_facts {
-                        ui.selectable_value(&mut self.target_fact, Some(i.clone()), format!("{:}", i));
-                    }
-                });
-            if prev != self.target_fact {self.update_state()};
+            // ComboBox::from_label("").
+            //     selected_text(format!("{}", self.target_fact.as_ref().map(|x|format!("{}",x)).unwrap_or_else(||"None".to_string()))).show_ui(ui, |ui|{
+            //         for i in &self.engine.clone().unwrap().all_possible_facts {
+            //             ui.selectable_value(&mut self.target_fact, Some(i.clone()), format!("{:}", i));
+            //         }
+            //     });
             let prev =self.state.clone();
             ComboBox::from_label("l").selected_text(format!("{:?}", self.state)).show_ui(ui, |ui|{
                 ui.selectable_value(&mut self.state, AppState::None, "None");
@@ -123,34 +127,108 @@ impl eframe::App for MyEguiApp {
             });
             if self.target_fact.is_none() {self.state = AppState::None;}
             else if prev != self.state {self.update_state()}
-            if ui.button("Iterate").clicked(){
+            if ui.button("Iterate to find").clicked(){
                 match self.state {
                     AppState::None => (),
                     AppState::DirectReasoning => {self.dir.as_mut().unwrap().step(); self.dir.as_ref().unwrap().update_hashmap(&self.coloring)},
-                    AppState::ReverseReasoning => {self.rev.as_mut().unwrap().step(); println!("{:?}", self.rev.as_ref().unwrap().root);},
+                    AppState::ReverseReasoning => {self.rev.as_mut().unwrap().step(); self.rev.as_mut().unwrap().recolor(&self.coloring)},
+                }
+            }
+            if ui.button("Find").clicked(){
+                match self.state {
+                    AppState::None => (),
+                    AppState::DirectReasoning => {self.dir.as_mut().unwrap().try_find(); self.dir.as_ref().unwrap().update_hashmap(&self.coloring)},
+                    AppState::ReverseReasoning => {self.rev.as_mut().unwrap().build_tree(&self.coloring);},
                 }
             }
         })});
-        
-        egui::SidePanel::right("Rules")
-            .resizable(true)
+        let mut update_state = false;
+        egui::SidePanel::right("Facts")
+            .resizable(false)
             .show(ctx, |ui| {
-                let mut table = TableBuilder::new(ui).resizable(true).column(Column::auto()).column(Column::auto());
+                let mut table = TableBuilder::new(ui).resizable(false).column(Column::exact(15.0)).column(Column::auto().at_least(15.0)).column(Column::exact(15.0));
                 table.header(20.0, |mut header| {
-                    header.col(|ui|{ui.strong("Required Facts");});
-                    header.col(|ui|{ui.strong("Resulting Facts");});
+                    header.col(|ui|{ui.strong("Starting");});
+                    header.col(|ui|{ui.strong("Facts");});
+                    header.col(|ui|{ui.strong("Target");});
                 }).body(|mut body| {
-                    if let Some(e) = &self.engine {
-                        body.rows(18.0, e.rules.len(), |row_index, mut row| {
-                            row.col(|ui|{ ui.label(
-                                e.rules[row_index].reqs.iter().map(|x|format!("{}", x)).reduce(|x, y|x + ", " + &y).unwrap_or_default()
-                            ); });
-                            row.col(|ui|{ ui.label(format!("{}", e.rules[row_index].out)); });
-
+                    if let Some(e) = &mut self.engine {
+                        body.rows(24.0, e.all_possible_facts.len(), |row_index, mut row| {
+                            let f = e.all_possible_facts[row_index].clone();
+                            let mut start = e.starting_facts.contains(&f);
+                            let old_start = start;
+                            // row.col(|ui|{ ui.label(
+                            //     e.rules[row_index].reqs.iter().map(|x|format!("{}", x)).reduce(|x, y|x + ", " + &y).unwrap_or_default()
+                            // ); });
+                            // row.col(|ui|{ ui.label(format!("{}", e.rules[row_index].out)); });
+                            row.col(|ui|{
+                                ui.checkbox(&mut start, "");
+                            });
+                            if old_start != start {
+                                if start {
+                                    e.starting_facts.insert(f.clone());
+                                }
+                                else {e.starting_facts.remove(&f);}
+                                update_state = true;
+                            }
+                            row.col(|ui|{
+                                ui.label(format!("{}", f));
+                            });
+                            let t = self.target_fact.clone();
+                            row.col(|ui|{
+                                ui.radio_value(&mut self.target_fact, Some(f.clone()), "");
+                            });
+                            if t != self.target_fact {
+                                update_state = true;
+                            }
                         })
                     }
                 });
             });
+        if update_state{
+            self.update_state();
+        }
+        egui::TopBottomPanel::bottom("Rules").resizable(true).show(ctx, |ui|{
+            ui.vertical(|ui|{
+            
+            ScrollArea::vertical().drag_to_scroll(true).show(ui, |ui|{
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(RichText::new("Select starting facts and target fact. After this select type of production system. \nScroll down to list of rules.\n"));
+                    ui.label(RichText::new("Use \"Iterate to find\" to make one iteration of search, \"Find\" to apply iteration until result.\n"));
+                    ui.label(RichText::new("Rectangles are rules, circles are facts. Color scheme:\n"));
+                    ui.label(RichText::new("Starting facts\n").color(Color32::DARK_GREEN));
+                    ui.label(RichText::new("Visited facts and rules\n").color(Color32::YELLOW));
+                    ui.label(RichText::new("Target fact(while searching)\n").color(Color32::GREEN));
+                    ui.label(RichText::new("Target fact(got after finding)\n").color(Color32::LIGHT_GREEN));
+                    ui.label(RichText::new("Target fact(not possible with rules and these starting facts)\n").color(Color32::LIGHT_RED));
+                    ui.label(RichText::new("Optimal rules and facts for getting target fact(only in reversive production system)\n").color(Color32::BLUE).background_color(Color32::LIGHT_GRAY));
+                    ui.label(RichText::new("Dead end while searching path to target fact(only in reversive production system)\n").color(Color32::DARK_RED));
+                    
+
+                });
+                ui.checkbox(&mut self.all_rules, "Show all rules:");
+                if self.all_rules {
+                    for i in &self.engine.as_ref().unwrap().rules {
+                        ui.label(format!("{}", i));
+                    }
+                }
+                else {
+                    match self.state {
+                        AppState::None => (),
+                        AppState::DirectReasoning => {
+                            for i in self.dir.as_ref().unwrap().all_rules.iter().filter(|&x|self.dir.as_ref().unwrap().unused_rules.contains(x)) {
+                                ui.label(format!("{}", i));
+                            }
+                        },
+                        AppState::ReverseReasoning => {
+                            for i in self.rev.as_ref().unwrap().get_applied_rules() {
+                                ui.label(format!("{}", i));
+                            }
+                        },
+                    }
+                }
+            })});
+        });
         egui::CentralPanel::default().show(ctx, |ui| {
             let style_settings = &SettingsStyle::new().with_labels_always(true);
             let interaction_settings = &SettingsInteraction::new()
@@ -172,8 +250,10 @@ impl eframe::App for MyEguiApp {
                         let shape_color = match n.data().unwrap() {
                             GraphNode::Rule(r) => {
                                 r.state.read().unwrap().get(&r.rule).map(|qt| match qt {
-                                    direct_reasoning::RuleState::None => Color32::GRAY,
-                                    direct_reasoning::RuleState::Visited => Color32::YELLOW,
+                                    RuleState::None => Color32::GRAY,
+                                    RuleState::Visited => Color32::YELLOW,
+                                    RuleState::VisitedPath => Color32::BLUE,
+                                    RuleState::DeadEnd => Color32::DARK_RED,
                                 }).unwrap_or(Color32::GRAY)
                             }
                             GraphNode::Fact(f) => {
@@ -182,7 +262,10 @@ impl eframe::App for MyEguiApp {
                                        FactState::Starting => Color32::DARK_GREEN,
                                        FactState::Target => Color32::GREEN,
                                        FactState::Visited => Color32::YELLOW,
-                                       FactState::TargetVisited => Color32::LIGHT_GREEN
+                                       FactState::TargetVisited => Color32::LIGHT_GREEN,
+                                       FactState::VisitedPath => Color32::BLUE,
+                                       FactState::DeadEnd => Color32::DARK_RED,
+                                       FactState::TargetNotPossible => Color32::LIGHT_RED,
                                    }).unwrap_or(Color32::GRAY)
                                 }
                             };
@@ -201,14 +284,14 @@ impl eframe::App for MyEguiApp {
                             GraphNode::Rule(r) => ctx.fonts(|f| {
                                 f.layout_no_wrap(
                                     format!("{:}", r.rule),
-                                    FontId::new(rad, FontFamily::Monospace),
+                                    FontId::new(rad*1.5, FontFamily::Monospace),
                                     color,
                                 )
                             }),
                             GraphNode::Fact(fact) => ctx.fonts(|f| {
                                 f.layout_no_wrap(
                                     format!("{:}", fact.fact),
-                                    FontId::new(rad, FontFamily::Monospace),
+                                    FontId::new(rad*1.5, FontFamily::Monospace),
                                     color,
                                 )
                             }),
@@ -216,7 +299,7 @@ impl eframe::App for MyEguiApp {
                         ;
 
                         // we need to offset label by half its size to place it in the center of the rect
-                        let offset = Vec2::new(-galley.size().x / 2., -galley.size().y / 2. - rad * 1.5);
+                        let offset = Vec2::new(-galley.size().x / 2., -galley.size().y / 2. - rad * 1.5*1.5);
                         // create the shape and add it to the layers
                         let shape_label = TextShape::new(node_center_loc + offset, galley);
                         l.add(shape_label);

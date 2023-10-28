@@ -1,9 +1,13 @@
 use std::{sync::Arc, collections::{HashMap, HashSet}, mem::swap};
 
-use crate::{engine::Engine, fact::{Fact, Rule}};
+use crate::{engine::Engine, fact::{Fact, Rule}, direct_reasoning::{NodeColoring, FactState, RuleState}};
 #[derive(Debug, Clone)]
 pub struct ReverseReasoning {
-    pub rules: Arc<Engine>,
+    all_facts: Vec<Fact>,
+    target_fact: Fact,
+    //starting_facts: Vec<Fact>,
+    pub all_rules: Vec<Rule>,
+    //pub rules: Arc<Engine>,
     pub root: Box<Node>,
     pub starting_facts: HashSet<Fact>,
     pub reversed_rules: HashMap<Fact, Vec<Rule>>
@@ -15,7 +19,7 @@ pub enum RevStepResult {
     NotProved,
 }
 impl ReverseReasoning {
-    pub fn new(rules: Arc<Engine>, target_fact: Fact) -> Self{
+    pub fn new(rules: &Engine, target_fact: Fact) -> Self{
         let starting_facts = rules.starting_facts.iter().cloned().collect();
         let mut reversed_rules: HashMap<Fact, Vec<Rule>> = HashMap::new();
         for (res_fact, rule) in rules.rules.iter().map(|x|(x.out.clone(), x.clone())){
@@ -24,13 +28,13 @@ impl ReverseReasoning {
             }
             else {reversed_rules.insert(res_fact.clone(), vec![rule]);}
         }
-        Self { rules: rules.clone(), 
-            root: Box::new(Node{available_rules:Arc::new(rules.rules.iter().cloned().collect()), node_info: NodeInfo::FactToProve(target_fact)}), 
+        Self { all_facts: rules.all_possible_facts.clone(), all_rules: rules.rules.clone(),
+            root: Box::new(Node{available_rules:Arc::new(rules.rules.iter().cloned().collect()), node_info: NodeInfo::FactToProve(target_fact.clone())}), 
             starting_facts,
-            reversed_rules}
+            reversed_rules, target_fact}
     }
     pub fn step(&mut self) -> RevStepResult {
-        println!("{:?}", self.root);
+        //println!("{:?}", self.root);
         let mut n = Box::new(Node{available_rules:Arc::new(HashSet::new()), node_info: NodeInfo::Empty});
         swap(&mut n, &mut self.root);
         let t =self.rec_iterate(&mut n);
@@ -41,6 +45,96 @@ impl ReverseReasoning {
             RecResult::DeadEnd => RevStepResult::NotProved,
         }
     }
+    pub fn build_tree(&mut self, coloring: &NodeColoring) -> RevStepResult {
+        loop {
+            let t = self.step();
+            if t != RevStepResult::Iterated {
+                self.recolor(coloring);
+                return t;
+            }
+        }
+    }
+    pub fn recolor(&self, coloring: &NodeColoring) {
+        let mut fc = coloring.facts.write().unwrap();
+        let mut rc = coloring.rules.write().unwrap();
+        
+        for i in &self.all_facts {
+            fc.insert(i.clone(), FactState::None);
+        }
+        for i in &self.all_rules {
+            rc.insert(i.clone(), RuleState::None);
+        }
+        Self::rec_recoloring(&self.root, &mut fc, &mut rc);
+        for i in &self.starting_facts {
+            fc.insert(i.clone(), FactState::Starting);
+
+        }
+        
+        match &self.root.node_info {
+            NodeInfo::Or(f, _, s) => {
+                if *s == RecResult::Found && f == &self.target_fact{
+                    fc.insert(self.target_fact.clone(), FactState::TargetVisited); 
+                }
+                else {fc.insert(self.target_fact.clone(), FactState::Target); }
+            },
+            NodeInfo::And(f, _, _, s) => {
+                if *s == RecResult::Found  && f == &self.target_fact{
+                    fc.insert(self.target_fact.clone(), FactState::TargetVisited); 
+                } else {fc.insert(self.target_fact.clone(), FactState::Target); }
+            },
+            NodeInfo::FactToProve(_) => {fc.insert(self.target_fact.clone(), FactState::Target);},
+            NodeInfo::ProvenFact(f) => {
+                if f == &self.target_fact{
+                    fc.insert(self.target_fact.clone(), FactState::TargetVisited); 
+                } else {fc.insert(self.target_fact.clone(), FactState::Target); }
+            },
+            NodeInfo::DeadEnd(_) => {fc.insert(self.target_fact.clone(), FactState::Target);},
+            NodeInfo::Empty => {fc.insert(self.target_fact.clone(), FactState::Target);},
+        };
+    }
+    fn rec_recoloring(node: &Node, facts: &mut HashMap<Fact, FactState>, rules: &mut HashMap<Rule, RuleState>){
+        match &node.node_info {
+            NodeInfo::Or(t, r, q) => {
+                for i in r {
+                    Self::rec_recoloring(i, facts, rules);
+                }
+                let fs = match q {
+                    RecResult::Potential => FactState::Visited,
+                    RecResult::Found => FactState::VisitedPath,
+                    RecResult::DeadEnd => FactState::DeadEnd,
+                };
+                facts.insert(t.clone(), fs);
+                
+
+            },
+            NodeInfo::And(f, r, n, q) => {
+                for i in n {
+                    Self::rec_recoloring(i, facts, rules);
+                }
+                let rs = match q {
+                    RecResult::Potential => RuleState::Visited,
+                    RecResult::Found => RuleState::VisitedPath,
+                    RecResult::DeadEnd => RuleState::DeadEnd,
+                };
+                rules.insert(r.clone(), rs);
+                let fs = match q {
+                    RecResult::Potential => FactState::Visited,
+                    RecResult::Found => FactState::VisitedPath,
+                    RecResult::DeadEnd => FactState::DeadEnd,
+                };
+                facts.insert(f.clone(), fs);
+                
+            },
+            NodeInfo::FactToProve(f) => {
+                facts.insert(f.clone(), FactState::Visited);
+            },
+            NodeInfo::ProvenFact(_) => (),
+            NodeInfo::DeadEnd(f) => {
+                facts.insert(f.clone(), FactState::DeadEnd);
+            },
+            NodeInfo::Empty => unreachable!(),
+        }
+    } 
     //At least one branch solved
     fn rec_iterate(&mut self, node: &mut Node) -> RecResult {
         match &mut node.node_info {
@@ -117,6 +211,64 @@ impl ReverseReasoning {
             NodeInfo::DeadEnd(_) => RecResult::DeadEnd,
             NodeInfo::Empty => unreachable!()
         }
+    }
+    pub fn get_applied_rules(&self) -> impl Iterator<Item = Rule> {
+        match &self.root.node_info {
+            NodeInfo::Or(f, _, s) => {
+                if *s == RecResult::Found && f == &self.target_fact{
+                    self.get_applied_rules_rec(&self.root, true).into_iter()
+                }
+                else {self.get_applied_rules_rec(&self.root, false).into_iter() }
+            },
+            NodeInfo::And(f, _, _, s) => {
+                if *s == RecResult::Found && f == &self.target_fact{
+                    self.get_applied_rules_rec(&self.root, true).into_iter()
+                }
+                else {self.get_applied_rules_rec(&self.root, false).into_iter()  }
+            },
+            NodeInfo::FactToProve(_) => {self.get_applied_rules_rec(&self.root, false).into_iter() },
+            NodeInfo::ProvenFact(f) => {
+                self.get_applied_rules_rec(&self.root, false) .into_iter()
+            },
+            NodeInfo::DeadEnd(_) => {self.get_applied_rules_rec(&self.root, false).into_iter() },
+            NodeInfo::Empty => {self.get_applied_rules_rec(&self.root, false).into_iter() },
+        }
+    }
+    fn get_applied_rules_rec(&self, node: &Node, is_final: bool) -> Vec<Rule> {
+        let mut t = vec![];
+        match &node.node_info {
+            NodeInfo::Or(_, r, q) => {
+                for i in r {
+                    t.append(&mut self.get_applied_rules_rec(i, is_final));
+                }
+                
+                
+
+            },
+            NodeInfo::And(f, r, n, q) => {
+                for i in n {
+                    t.append(&mut self.get_applied_rules_rec(i, is_final));
+                }
+                let rs = match q {
+                    RecResult::Potential => !is_final,
+                    RecResult::Found => true,
+                    RecResult::DeadEnd => false,
+                };
+                if rs {
+                    t.push(r.clone())
+                }                
+                
+            },
+            NodeInfo::FactToProve(f) => {
+                
+            },
+            NodeInfo::ProvenFact(_) => (),
+            NodeInfo::DeadEnd(f) => {
+                
+            },
+            NodeInfo::Empty => unreachable!(),
+        }
+        t
     }
 }
 #[derive(Debug, Clone, Copy, PartialEq)]

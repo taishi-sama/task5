@@ -9,22 +9,29 @@ use crate::{
 };
 #[derive(Debug, Clone)]
 pub struct DirectReasoning {
-    rules: Arc<Engine>,
+    //rules: Arc<Engine>,
+    all_facts: Vec<Fact>,
+    starting_facts: HashSet<Fact>,
+    pub all_rules: Vec<Rule>,
     current_facts: HashSet<Fact>,
     target_fact: Fact,
     used_rules: Vec<Rule>,
-    unused_rules: HashSet<Rule>,
+    pub unused_rules: HashSet<Rule>,
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StepResult {
     FoundAfter(Rule, Fact),
+    Found,
     Applied(Rule),
     NotProved,
 }
 impl DirectReasoning {
-    pub fn new(rules: Arc<Engine>, target_fact: Fact) -> Self {
+    pub fn new(rules: &Engine, target_fact: Fact) -> Self {
         DirectReasoning {
-            rules: rules.clone(),
+            //rules: rules.clone(),
+            starting_facts: rules.starting_facts.clone(),
+            all_facts: rules.all_possible_facts.clone(),
+            all_rules: rules.rules.clone(),
             current_facts: rules.starting_facts.iter().cloned().collect(),
             target_fact,
             used_rules: vec![],
@@ -35,21 +42,25 @@ impl DirectReasoning {
         let mut c = color.facts.write().unwrap();
         let mut r = color.rules.write().unwrap();
 
-        for i in &self.rules.all_possible_facts {
+        for i in &self.all_facts {
             c.insert(i.clone(), FactState::None);
         }
         for i in &self.current_facts {
             c.insert(i.clone(), FactState::Visited);
         }
-        for i in &self.rules.starting_facts {
+        for i in &self.starting_facts {
             c.insert(i.clone(), FactState::Starting);
         }
         if self.current_facts.contains(&self.target_fact) {
             c.insert(self.target_fact.clone(), FactState::TargetVisited);
         }
+        else if !self
+        .unused_rules
+        .iter().any(|x| x.match_requirement(&self.current_facts)){
+            c.insert(self.target_fact.clone(), FactState::TargetNotPossible);
+        }
         else {
             c.insert(self.target_fact.clone(), FactState::Target);
-
         }
         for i in &self.unused_rules {
             r.insert(i.clone(), RuleState::None);
@@ -60,7 +71,17 @@ impl DirectReasoning {
         
         
     }
+    pub fn try_find(&mut self) -> StepResult {
+        loop {
+            let t = self.step();
+            if let StepResult::Applied(_) = t { } else {
+                self.step();
+                return t;
+            }
+        }
+    }
     pub fn step(&mut self) -> StepResult {
+        if self.current_facts.contains(&self.target_fact) {return  StepResult::Found}
         if let Some(r) = self
             .unused_rules
             .iter().find(|x| x.match_requirement(&self.current_facts))
@@ -105,10 +126,16 @@ pub enum FactState {
     Starting,
     Target,
     TargetVisited,
+    TargetNotPossible,
     Visited,
+    VisitedPath,
+    DeadEnd,
+    
 }
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum RuleState {
     None,
     Visited,
+    VisitedPath,
+    DeadEnd,
 }
