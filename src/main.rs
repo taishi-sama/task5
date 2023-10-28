@@ -1,7 +1,7 @@
 use std::{default, sync::{Arc, RwLock}, collections::HashMap, fmt::format};
 
 use direct_reasoning::{DirectReasoning, GraphNode, FactState, NodeColoring, RuleState};
-use egui::{Shape, Rect, Vec2, Rounding, Stroke, FontId, FontFamily, epaint::TextShape, Color32, ComboBox, ScrollArea, RichText};
+use egui::{Shape, Rect, Vec2, Rounding, Stroke, FontId, FontFamily, epaint::TextShape, Color32, ComboBox, ScrollArea, RichText, Layout};
 use egui_extras::{TableBuilder, Column};
 use egui_graphs::{Graph, GraphView, SettingsStyle, SettingsInteraction};
 use engine::Engine;
@@ -146,7 +146,7 @@ impl eframe::App for MyEguiApp {
         egui::SidePanel::right("Facts")
             .resizable(false)
             .show(ctx, |ui| {
-                let mut table = TableBuilder::new(ui).resizable(false).column(Column::exact(15.0)).column(Column::auto().at_least(15.0)).column(Column::exact(15.0));
+                let mut table = TableBuilder::new(ui).resizable(false).column(Column::exact(25.0)).column(Column::auto().at_least(15.0)).column(Column::exact(25.0));
                 table.header(20.0, |mut header| {
                     header.col(|ui|{ui.strong("Starting");});
                     header.col(|ui|{ui.strong("Facts");});
@@ -189,45 +189,47 @@ impl eframe::App for MyEguiApp {
             self.update_state();
         }
         egui::TopBottomPanel::bottom("Rules").resizable(true).show(ctx, |ui|{
-            ui.vertical(|ui|{
             
-            ScrollArea::vertical().drag_to_scroll(true).show(ui, |ui|{
-                ui.horizontal_wrapped(|ui| {
-                    ui.label(RichText::new("Select starting facts and target fact. After this select type of production system. \nScroll down to list of rules.\n"));
-                    ui.label(RichText::new("Use \"Iterate to find\" to make one iteration of search, \"Find\" to apply iteration until result.\n"));
-                    ui.label(RichText::new("Rectangles are rules, circles are facts. Color scheme:\n"));
-                    ui.label(RichText::new("Starting facts\n").color(Color32::DARK_GREEN));
-                    ui.label(RichText::new("Visited facts and rules\n").color(Color32::YELLOW));
-                    ui.label(RichText::new("Target fact(while searching)\n").color(Color32::GREEN));
-                    ui.label(RichText::new("Target fact(got after finding)\n").color(Color32::LIGHT_GREEN));
-                    ui.label(RichText::new("Target fact(not possible with rules and these starting facts)\n").color(Color32::LIGHT_RED));
-                    ui.label(RichText::new("Optimal rules and facts for getting target fact(only in reversive production system)\n").color(Color32::BLUE).background_color(Color32::LIGHT_GRAY));
-                    ui.label(RichText::new("Dead end while searching path to target fact(only in reversive production system)\n").color(Color32::DARK_RED));
+            ScrollArea::new([true, true]).drag_to_scroll(true).show(ui, |ui|{
+                ui.horizontal(|ui| {
                     
-
+                ui.vertical(|ui| {
+                    ui.label(RichText::new("Select starting facts and target fact. After this select type of production system. \nScroll down to list of rules."));
+                    ui.label(RichText::new("Use \"Iterate to find\" to make one iteration of search, \"Find\" to apply iteration until result."));
+                    ui.label(RichText::new("Rectangles are rules, circles are facts. Color scheme:"));
+                    ui.label(RichText::new("Starting facts").color(Color32::DARK_GREEN).background_color(Color32::LIGHT_GRAY));
+                    ui.label(RichText::new("Visited facts and rules").color(Color32::YELLOW).background_color(Color32::DARK_GRAY));
+                    ui.label(RichText::new("Target fact(while searching)").color(Color32::GREEN).background_color(Color32::DARK_GRAY));
+                    ui.label(RichText::new("Target fact(got after finding)").color(Color32::LIGHT_GREEN).background_color(Color32::DARK_GRAY));
+                    ui.label(RichText::new("Target fact(not possible with rules and these starting facts)").color(Color32::LIGHT_RED).background_color(Color32::DARK_GRAY));
+                    ui.label(RichText::new("Optimal rules and facts for getting target fact(only in reversive production system)").color(Color32::BLUE).background_color(Color32::LIGHT_GRAY));
+                    ui.label(RichText::new("Dead end while searching path to target fact(only in reversive production system)").color(Color32::DARK_RED).background_color(Color32::LIGHT_GRAY));
                 });
-                ui.checkbox(&mut self.all_rules, "Show all rules:");
-                if self.all_rules {
-                    for i in &self.engine.as_ref().unwrap().rules {
-                        ui.label(format!("{}", i));
+                ui.vertical(|ui| {
+                    ui.checkbox(&mut self.all_rules, "Show all rules:");
+                    if self.all_rules {
+                        for i in &self.engine.as_ref().unwrap().rules {
+                            ui.label(format!("{}", i));
+                        }
                     }
-                }
-                else {
-                    match self.state {
-                        AppState::None => (),
-                        AppState::DirectReasoning => {
-                            for i in self.dir.as_ref().unwrap().all_rules.iter().filter(|&x|self.dir.as_ref().unwrap().unused_rules.contains(x)) {
-                                ui.label(format!("{}", i));
-                            }
-                        },
-                        AppState::ReverseReasoning => {
-                            for i in self.rev.as_ref().unwrap().get_applied_rules() {
-                                ui.label(format!("{}", i));
-                            }
-                        },
+                    else {
+                        match self.state {
+                            AppState::None => (),
+                            AppState::DirectReasoning => {
+                                for i in self.dir.as_ref().unwrap().all_rules.iter().filter(|&x|self.dir.as_ref().unwrap().unused_rules.contains(x)) {
+                                    ui.label(format!("{}", i));
+                                }
+                            },
+                            AppState::ReverseReasoning => {
+                                for i in self.rev.as_ref().unwrap().get_applied_rules() {
+                                    ui.label(format!("{}", i));
+                                }
+                            },
+                        }
                     }
-                }
-            })});
+                    });
+            });
+            });
         });
         egui::CentralPanel::default().show(ctx, |ui| {
             let style_settings = &SettingsStyle::new().with_labels_always(true);
