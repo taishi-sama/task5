@@ -19,7 +19,7 @@ pub mod reverse_reasoning;
 fn main() {
     let native_options = eframe::NativeOptions::default();
     eframe::run_native(
-        "My egui App",
+        "Production system",
         native_options,
         Box::new(|cc| Box::new(MyEguiApp::new(cc))),
     )
@@ -120,7 +120,7 @@ impl eframe::App for MyEguiApp {
             //         }
             //     });
             let prev =self.state.clone();
-            ComboBox::from_label("l").selected_text(format!("{:?}", self.state)).show_ui(ui, |ui|{
+            ComboBox::from_label("Type of production system").selected_text(format!("{:?}", self.state)).show_ui(ui, |ui|{
                 ui.selectable_value(&mut self.state, AppState::None, "None");
                 ui.selectable_value(&mut self.state, AppState::DirectReasoning, "Direct");
                 ui.selectable_value(&mut self.state, AppState::ReverseReasoning, "Reverse");

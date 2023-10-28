@@ -180,7 +180,7 @@ impl ReverseReasoning {
                 *status
             },
             NodeInfo::FactToProve(f) => {
-                println!("Starting facts: {:?}", self.starting_facts);
+                //println!("Starting facts: {:?}", self.starting_facts);
                 if self.starting_facts.contains(f) {
                     *node = Node{available_rules: node.available_rules.clone(), node_info: NodeInfo::ProvenFact(f.clone())};
                     RecResult::Found
