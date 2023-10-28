@@ -112,7 +112,7 @@ impl eframe::App for MyEguiApp {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         egui::TopBottomPanel::top("Controls").resizable(false).show(ctx, |ui|{
             ui.horizontal(|ui|{
-            
+            egui::widgets::global_dark_light_mode_switch(ui);
             // ComboBox::from_label("").
             //     selected_text(format!("{}", self.target_fact.as_ref().map(|x|format!("{}",x)).unwrap_or_else(||"None".to_string()))).show_ui(ui, |ui|{
             //         for i in &self.engine.clone().unwrap().all_possible_facts {
