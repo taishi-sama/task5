@@ -1,5 +1,8 @@
 use core::fmt;
-use std::{collections::{HashSet, HashMap}, sync::{Arc, RwLock}};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::{Arc, RwLock},
+};
 
 // #[derive(Debug, Clone)]
 // pub struct ConcreteRule {
@@ -16,9 +19,12 @@ impl CoreRule {
     pub fn match_requirement(&self, facts: &HashSet<Fact>) -> bool {
         self.reqs.iter().all(|y| facts.contains(y))
     }
-    pub fn new(reqs: impl Iterator<Item = Fact>, out: Fact) -> Arc<Self>{
-        Arc::new(CoreRule { reqs: reqs.collect(), out})
-    }   
+    pub fn new(reqs: impl Iterator<Item = Fact>, out: Fact) -> Arc<Self> {
+        Arc::new(CoreRule {
+            reqs: reqs.collect(),
+            out,
+        })
+    }
 }
 pub type Rule = Arc<CoreRule>;
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -27,9 +33,9 @@ pub enum CoreFact {
     Symbols(Vec<CoreFact>),
 }
 impl CoreFact {
-    pub fn new(symbol: impl Into<String>) -> Arc<Self>{
+    pub fn new(symbol: impl Into<String>) -> Arc<Self> {
         Arc::new(CoreFact::Symbol(symbol.into()))
-    }    
+    }
 }
 
 impl fmt::Display for CoreFact {
@@ -40,17 +46,21 @@ impl fmt::Display for CoreFact {
                 write!(f, "(")?;
                 for i in v {
                     write!(f, "{}, ", i)?
-                };
+                }
                 write!(f, ")")
-            },
+            }
         }
     }
 }
 impl fmt::Display for CoreRule {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{{")?;
-        for i in &self.reqs {
-            write!(f, "{}, ", i)?;
+        for (i, fact) in self.reqs.iter().enumerate() {
+            if i != self.reqs.len() - 1 {
+                write!(f, "{}, ", fact)?;
+            } else {
+                write!(f, "{} ", fact)?;
+            }
         }
         write!(f, "}} -> {}", self.out)
     }

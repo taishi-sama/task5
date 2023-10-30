@@ -1,7 +1,10 @@
-use std::{collections::{HashSet, HashMap}, sync::{Arc, RwLock}};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::{Arc, RwLock},
+};
 
 use egui_graphs::Graph;
-use petgraph::{Directed, stable_graph::StableGraph};
+use petgraph::{stable_graph::StableGraph, Directed};
 
 use crate::{
     engine::Engine,
@@ -38,7 +41,7 @@ impl DirectReasoning {
             unused_rules: rules.rules.iter().cloned().collect(),
         }
     }
-    pub fn update_hashmap(&self, color: &NodeColoring){
+    pub fn update_hashmap(&self, color: &NodeColoring) {
         let mut c = color.facts.write().unwrap();
         let mut r = color.rules.write().unwrap();
 
@@ -53,13 +56,13 @@ impl DirectReasoning {
         }
         if self.current_facts.contains(&self.target_fact) {
             c.insert(self.target_fact.clone(), FactState::TargetVisited);
-        }
-        else if !self
-        .unused_rules
-        .iter().any(|x| x.match_requirement(&self.current_facts)){
+        } else if !self
+            .unused_rules
+            .iter()
+            .any(|x| x.match_requirement(&self.current_facts))
+        {
             c.insert(self.target_fact.clone(), FactState::TargetNotPossible);
-        }
-        else {
+        } else {
             c.insert(self.target_fact.clone(), FactState::Target);
         }
         for i in &self.unused_rules {
@@ -68,23 +71,25 @@ impl DirectReasoning {
         for i in &self.used_rules {
             r.insert(i.clone(), RuleState::Visited);
         }
-        
-        
     }
     pub fn try_find(&mut self) -> StepResult {
         loop {
             let t = self.step();
-            if let StepResult::Applied(_) = t { } else {
+            if let StepResult::Applied(_) = t {
+            } else {
                 self.step();
                 return t;
             }
         }
     }
     pub fn step(&mut self) -> StepResult {
-        if self.current_facts.contains(&self.target_fact) {return  StepResult::Found}
+        if self.current_facts.contains(&self.target_fact) {
+            return StepResult::Found;
+        }
         if let Some(r) = self
             .unused_rules
-            .iter().find(|x| x.match_requirement(&self.current_facts))
+            .iter()
+            .find(|x| x.match_requirement(&self.current_facts))
         {
             let r = r.clone();
             let f = r.out.clone();
@@ -103,22 +108,22 @@ impl DirectReasoning {
 #[derive(Debug, Clone)]
 pub struct StatedFact {
     pub fact: Fact,
-    pub state: Arc<RwLock<HashMap<Fact, FactState>>>
+    pub state: Arc<RwLock<HashMap<Fact, FactState>>>,
 }
 #[derive(Debug, Clone)]
 pub struct StatedRule {
     pub rule: Rule,
-    pub state: Arc<RwLock<HashMap<Rule, RuleState>>>
+    pub state: Arc<RwLock<HashMap<Rule, RuleState>>>,
 }
 #[derive(Debug, Clone)]
 pub enum GraphNode {
     Rule(StatedRule),
-    Fact(StatedFact)    
+    Fact(StatedFact),
 }
 #[derive(Debug, Clone, Default)]
 pub struct NodeColoring {
     pub facts: Arc<RwLock<HashMap<Fact, FactState>>>,
-    pub rules: Arc<RwLock<HashMap<Rule, RuleState>>>
+    pub rules: Arc<RwLock<HashMap<Rule, RuleState>>>,
 }
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum FactState {
@@ -130,7 +135,6 @@ pub enum FactState {
     Visited,
     VisitedPath,
     DeadEnd,
-    
 }
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum RuleState {
