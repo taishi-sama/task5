@@ -95,6 +95,8 @@ impl ReverseReasoning {
             NodeInfo::Or(f, _, s) => {
                 if *s == RecResult::Found && f == &self.target_fact {
                     fc.insert(self.target_fact.clone(), FactState::TargetVisited);
+                } else if *s == RecResult::DeadEnd { 
+                    fc.insert(self.target_fact.clone(), FactState::TargetNotPossible);
                 } else {
                     fc.insert(self.target_fact.clone(), FactState::Target);
                 }
@@ -102,7 +104,11 @@ impl ReverseReasoning {
             NodeInfo::And(f, _, _, s) => {
                 if *s == RecResult::Found && f == &self.target_fact {
                     fc.insert(self.target_fact.clone(), FactState::TargetVisited);
-                } else {
+                }
+                else if *s == RecResult::DeadEnd { 
+                    fc.insert(self.target_fact.clone(), FactState::TargetNotPossible);
+                }
+                else {
                     fc.insert(self.target_fact.clone(), FactState::Target);
                 }
             }
@@ -117,7 +123,7 @@ impl ReverseReasoning {
                 }
             }
             NodeInfo::DeadEnd(_) => {
-                fc.insert(self.target_fact.clone(), FactState::Target);
+                fc.insert(self.target_fact.clone(), FactState::TargetNotPossible);
             }
             NodeInfo::Empty => {
                 fc.insert(self.target_fact.clone(), FactState::Target);
